@@ -46,14 +46,17 @@ async function check() {
   if (JSON.stringify(next) !== JSON.stringify(shared(AVAILABLE) ?? null)) setShared(AVAILABLE, next);
 }
 
+// The clone keeps the repo's bytes: Git for Windows turns LF into CRLF by default, which made
+// every file differ from the installed one. A clone made that way is made again.
 async function fetchMain() {
   const dir = clone();
-  if (await git(["-C", dir, "rev-parse", "--git-dir"])) {
+  const lf = (await git(["-C", dir, "config", "--get", "core.autocrlf"])) === "false";
+  if (lf && (await git(["-C", dir, "rev-parse", "--git-dir"]))) {
     if ((await git(["-C", dir, "fetch", "-q", "--depth", "1", REPO, "main"])) === null) return null;
     if ((await git(["-C", dir, "reset", "-q", "--hard", "FETCH_HEAD"])) === null) return null;
   } else {
     await exec(await tool("rm"), ["-rf", dir]).catch(() => null);
-    if ((await git(["clone", "-q", "--depth", "1", "--branch", "main", REPO, dir])) === null) return null;
+    if ((await git(["clone", "-q", "-c", "core.autocrlf=false", "--depth", "1", "--branch", "main", REPO, dir])) === null) return null;
   }
   return git(["-C", dir, "rev-parse", "HEAD"]);
 }
