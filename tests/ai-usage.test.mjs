@@ -18,9 +18,11 @@ function usageHarness(files = {}, response = {}, status = 200, settings = {}, pr
     agents: () => live.agents ?? [],
     terminals: () => live.terminals ?? [],
     exec: async (...args) => (live.exec ? live.exec(...args) : { code: 1, stdout: '', stderr: '' }),
-    readTextFile: async path => {
-      reads.push(path);
-      const value = files[path];
+    // A file on another machine is keyed "<machine>:<path>".
+    readTextFile: async (path, options) => {
+      const key = options?.on ? `${options.on}:${path}` : path;
+      reads.push(key);
+      const value = files[key];
       if (typeof value === 'function') return value();
       return value === undefined ? null : typeof value === 'string' ? value : JSON.stringify(value);
     },
@@ -747,6 +749,61 @@ test('a Claude tab follows the profile its terminal runs now, not one cached ear
   assert.deepEqual(await shown(), ['claude.personal']);
 });
 
+
+// Another machine's home, as `sh` there prints it; anything else fails like an unreachable machine.
+const machineHome = (homes, other) => async (sh, args, options) => {
+  if (sh === 'sh' && args[1]?.includes('$HOME') && homes[options?.on]) return { code: 0, stdout: homes[options.on], stderr: '' };
+  return other ? other(sh, args, options) : { code: 1, stdout: '', stderr: '' };
+};
+
+test('an agent on another machine reads its logins there, under its own cache', async () => {
+  const h = usageHarness({
+    'wsl:/home/me/.claude/.credentials.json': { claudeAiOauth: { accessToken: 'wsl-claude' } },
+    'wsl:/home/me/.kimi-code/credentials/kimi-code.json': { access_token: 'wsl-kimi' },
+  }, { limits: [] }, 200, {}, {}, { exec: machineHome({ wsl: '/home/me' }) });
+  const remote = key => ({ ...agent(key), terminal: 'wsl/t3' });
+  const [work, personal] = await h.route(remote('claude'));
+  assert.deepEqual([work.id, work.sub, work.from], ['claude.claude@wsl', 'wsl: ~/.claude', { claude: '/home/me/.claude', on: 'wsl' }]);
+  assert.deepEqual([personal.id, personal.from], ['claude.personal@wsl', { claude: '/home/me/.claude-personal', on: 'wsl' }]);
+  const [kimi] = await h.route(remote('kimi-code'));
+  assert.deepEqual([kimi.id, kimi.from], ['kimi@wsl', { kimi: true, on: 'wsl' }]);
+  await h.refreshOne(work);
+  await h.refreshOne(kimi);
+  assert.deepEqual(h.requests.map(r => r.headers.Authorization), ['Bearer wsl-claude', 'Bearer wsl-kimi']);
+  assert.ok(!h.reads.some(r => r.startsWith('/home/test/.claude') || r.startsWith('/home/test/.kimi')));
+  assert.equal(h.state.get('omarchy-ai-usage.claude.claude@wsl').error, null);
+  assert.equal(h.state.get('omarchy-ai-usage.claude.claude'), undefined);
+});
+
+test('a machine that cannot be reached labels its Claude and names itself in login errors', async () => {
+  const h = usageHarness();
+  const [claudeSource] = await h.route({ ...agent('claude'), terminal: 'box/t1' });
+  assert.deepEqual([claudeSource.provider, claudeSource.note], [undefined, 'box unreachable']);
+  const [codexSource] = await h.route({ ...agent('codex'), terminal: 'box/t1' });
+  await h.refreshOne(codexSource);
+  assert.equal(h.state.get('omarchy-ai-usage.codex@box').error, 'no Codex ChatGPT login in ~/.codex on box');
+  assert.equal(h.requests.length, 0);
+});
+
+test('a remote Claude tab looks up its profile on its machine, by its ID there', async () => {
+  const lookups = [];
+  const live = {
+    focused: { tab: 'a' },
+    panes: [{ tab: 'a', terminal: 'wsl/t2', focused: true, program: { key: 'claude', name: 'Claude', icon: 'claude.svg', agent: true } }],
+    exec: machineHome({ wsl: '/home/me' }, async (_sh, args, options) => {
+      lookups.push([args.at(-1), options?.on]);
+      return { code: 0, stdout: 'CLAUDE_CONFIG_DIR=/home/me/.claude-personal\n', stderr: '' };
+    }),
+  };
+  const h = usageHarness({}, {}, 200, {}, {}, live);
+  const instance = new h.AiUsage(), tasks = [];
+  const cx = { timer: { every() {} }, spawn: fn => tasks.push(fn), notify() {} };
+  instance.init({}, cx);
+  instance.sync(cx);
+  await Promise.all(tasks.splice(0).map(fn => fn(cx)));
+  assert.deepEqual(h.state.get('omarchy-ai-usage.shown').list.map(s => [s.id, s.from.claude]), [['claude.personal@wsl', '/home/me/.claude-personal']]);
+  assert.deepEqual(lookups, [['t2', 'wsl']]);
+});
 
 test('quota meters open details on click without a hover tooltip', () => {
   const h = usageHarness();

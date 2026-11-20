@@ -1,8 +1,31 @@
-import { appHome, home, readTextFile } from "herdr";
+import { appHome, exec, home, readTextFile } from "herdr";
 import { H, DAY } from "./time.js";
 
-const json = async path => {
-  try { return JSON.parse((await readTextFile(path.startsWith("/") ? path : `${home()}/${path}`)) ?? "null"); } catch { return null; }
+// An agent on another machine (terminal address "wsl/t3") keeps its logins in that machine's home,
+// read through herdr-core: a Windows app showing agents that run in WSL or over ssh.
+const machineOf = address => {
+  const i = typeof address === "string" ? address.indexOf("/") : -1;
+  return i > 0 ? address.slice(0, i) : null;
+};
+const homes = new Map();
+async function homeOn(on) {
+  if (!on) return home();
+  if (!homes.has(on)) homes.set(on, exec("sh", ["-c", 'printf %s "$HOME"'], { on }).then(r => (r.code === 0 && r.stdout.startsWith("/") ? r.stdout : null), () => null));
+  const h = await homes.get(on);
+  if (!h) homes.delete(on);
+  return h;
+}
+const isAbsolute = path => /^(\/|[A-Za-z]:[\\/])/.test(path);
+const tilde = (path, h) => (h && path.startsWith(h) ? `~${path.slice(h.length)}` : path);
+const onMachine = on => (on ? ` on ${on}` : "");
+// A path inside a home is relative to that machine's; this computer's needs no lookup.
+const read = (path, on = null) => {
+  if (isAbsolute(path)) return readTextFile(path, { on });
+  if (!on) return readTextFile(`${home()}/${path}`, { on });
+  return homeOn(on).then(base => (base ? readTextFile(`${base}/${path}`, { on }) : null));
+};
+const json = async (path, on = null) => {
+  try { return JSON.parse((await read(path, on)) ?? "null"); } catch { return null; }
 };
 const isoOf = ms => (ms ? new Date(ms).toISOString() : null);
 const spanName = s => (s >= 7 * DAY ? "Weekly limit" : `${Math.round(s / H)}-hour limit`);
@@ -94,34 +117,34 @@ const UNDER = { anthropic: "claude", "openai-codex": "codex", openai: "codex", "
 
 // Rebuilt from the plain source record each fetch, so the popup copy can refresh too.
 async function creds(src) {
-  const f = src.from;
+  const f = src.from, on = f.on ?? null;
   if (f.claude) {
-    const o = (await json(`${f.claude}/.credentials.json`))?.claudeAiOauth;
-    if (!o?.accessToken) throw new Error(`no Claude Code login in ${f.claude.replace(home(), "~")}`);
+    const o = (await json(`${f.claude}/.credentials.json`, on))?.claudeAiOauth;
+    if (!o?.accessToken) throw new Error(`no Claude Code login in ${tilde(f.claude, await homeOn(on))}${onMachine(on)}`);
     return { token: o.accessToken, expires: o.expiresAt };
   }
   if (f.codex) {
-    const t = (await json(".codex/auth.json"))?.tokens;
-    if (!t?.access_token) throw new Error("no Codex ChatGPT login in ~/.codex");
+    const t = (await json(".codex/auth.json", on))?.tokens;
+    if (!t?.access_token) throw new Error(`no Codex ChatGPT login in ~/.codex${onMachine(on)}`);
     return { token: t.access_token, account: t.account_id };
   }
   if (f.kimi) {
     // Read only: Kimi refreshes this 15-minute token itself, under its own lock, while it runs.
-    const t = await json(".kimi-code/credentials/kimi-code.json");
-    if (!t?.access_token) throw new Error("no Kimi Code login in ~/.kimi-code");
-    const config = await readTextFile(`${home()}/.kimi-code/config.toml`).catch(() => null);
+    const t = await json(".kimi-code/credentials/kimi-code.json", on);
+    if (!t?.access_token) throw new Error(`no Kimi Code login in ~/.kimi-code${onMachine(on)}`);
+    const config = await read(".kimi-code/config.toml", on).catch(() => null);
     const base = /https:\/\/api\.kimi\.ai\/coding\/v1/.test(config ?? "") ? "https://api.kimi.ai/coding/v1" : "https://api.kimi.com/coding/v1";
     return { token: t.access_token, base, expires: Number(t.expires_at) * 1000 || undefined };
   }
   if (f.copilot) {
-    const gh = (await json(".config/github-copilot/oauth.json"))?.["https://github.com/login/oauth"]?.[0]?.accessToken;
-    const apps = Object.values({ ...(await json(".config/github-copilot/hosts.json")), ...(await json(".config/github-copilot/apps.json")) });
+    const gh = (await json(".config/github-copilot/oauth.json", on))?.["https://github.com/login/oauth"]?.[0]?.accessToken;
+    const apps = Object.values({ ...(await json(".config/github-copilot/hosts.json", on)), ...(await json(".config/github-copilot/apps.json", on)) });
     const token = gh ?? apps.find(a => a?.oauth_token)?.oauth_token;
-    if (!token) throw new Error("no GitHub Copilot login in ~/.config/github-copilot");
+    if (!token) throw new Error(`no GitHub Copilot login in ~/.config/github-copilot${onMachine(on)}`);
     return { token };
   }
-  const e = (await json(HARNESS[f.harness].auth))?.[f.entry];
-  if (e?.type !== "oauth") throw new Error(`no ${f.entry} login in ${f.harness}`);
+  const e = (await json(HARNESS[f.harness].auth, on))?.[f.entry];
+  if (e?.type !== "oauth") throw new Error(`no ${f.entry} login in ${f.harness}${onMachine(on)}`);
   return { token: src.provider === "copilot" ? e.refresh : e.access, account: e.accountId, expires: e.expires };
 }
 
@@ -153,20 +176,21 @@ function omarchyUsage(cache) {
   return { windows, fetched: new Date(fetchedAt).toISOString() };
 }
 
-const omarchySource = v => ({
-  id: "omarchy.codex", provider: "openai", agent: v.program.name,
+const omarchySource = (v, on) => ({
+  id: on ? `omarchy.codex@${on}` : "omarchy.codex", provider: "openai", agent: v.program.name,
   label: "Omarchy", sub: "Omarchy's ChatGPT subscription; OpenCode account not verified",
-  icon: v.program.icon, tint: v.program.tint, from: { omarchy: "codex", harness: "opencode", entry: "openai" },
+  icon: v.program.icon, tint: v.program.tint, from: { omarchy: "codex", harness: "opencode", entry: "openai", ...(on ? { on } : {}) },
 });
 
 // settings.json's "claude_labels" ({ "~/.claude": "Work" }) names a profile outright. Otherwise its
 // organization ("Flexspring"), or "Personal" for the "<email>'s Organization" a personal account
 // gets, else the folder's name. ~/.claude keeps its state in ~/.claude.json, other folders inside.
-async function claudeName(dir) {
-  const own = (await json(`${appHome()}/settings.json`))?.claude_labels?.[dir.replace(home(), "~")];
+async function claudeName(dir, on = null) {
+  const h = await homeOn(on);
+  const own = (await json(`${appHome()}/settings.json`))?.claude_labels?.[tilde(dir, h)];
   if (typeof own === "string" && own) return own;
-  const file = dir === `${home()}/.claude` ? `${home()}/.claude.json` : `${dir}/.claude.json`;
-  const text = await readTextFile(file).catch(() => null);
+  const file = dir === `${h}/.claude` ? `${h}/.claude.json` : `${dir}/.claude.json`;
+  const text = await read(file, on).catch(() => null);
   let org;
   try { org = JSON.parse(text ?? "{}")?.oauthAccount?.organizationName; } catch { /* mid-write or broken: the folder's name */ }
   if (!org) return capital(claudeLabel(dir));
@@ -180,45 +204,53 @@ function labelled(v, why) {
 export async function sourcesFor(v, claudeDirOf, usageSource, isCurrent = () => true) {
   const key = v.program.key, agent = v.program.name;
   const icon = v.program.icon, tint = v.program.tint;
+  // Where the agent runs. Its sources carry the machine in `from.on` and in their id,
+  // so the same login on two machines keeps two caches.
+  const on = v.machine ?? machineOf(v.terminal);
+  const at = on ? { on } : {};
+  const id = s => (on ? `${s}@${on}` : s);
+  const sub = s => (on ? `${on}: ${s}` : s);
   if (key === "claude" || key === "claude-code") {
-    const dir = await claudeDirOf(v.terminal);
-    const dirs = dir ? [dir] : claudeDirs.map(d => `${home()}/${d}`);
-    return Promise.all(dirs.map(async d => ({ id: `claude.${claudeLabel(d)}`, provider: "claude", agent, label: await claudeName(d), sub: d.replace(home(), "~"), icon, tint, from: { claude: d } })));
+    const base = await homeOn(on);
+    if (!base) return [labelled(v, `${on} unreachable`)];
+    const dir = await claudeDirOf(v.terminal, on);
+    const dirs = dir ? [isAbsolute(dir) ? dir : `${base}/${dir}`] : claudeDirs.map(d => `${base}/${d}`);
+    return Promise.all(dirs.map(async d => ({ id: id(`claude.${claudeLabel(d)}`), provider: "claude", agent, label: await claudeName(d, on), sub: sub(tilde(d, base)), icon, tint, from: { claude: d, ...at } })));
   }
-  if (key === "codex") return [{ id: "codex", provider: "codex", agent, label: "codex", sub: "ChatGPT plan", icon, tint, from: { codex: true } }];
-  if (/^kimi/.test(key)) return [{ id: "kimi", provider: "kimi", agent, label: "Kimi", sub: "Kimi Code plan", icon, tint, from: { kimi: true } }];
-  if (key === "copilot") return [{ id: "copilot", provider: "copilot", agent, label: "copilot", sub: "GitHub Copilot", icon, tint, from: { copilot: true } }];
+  if (key === "codex") return [{ id: id("codex"), provider: "codex", agent, label: "codex", sub: sub("ChatGPT plan"), icon, tint, from: { codex: true, ...at } }];
+  if (/^kimi/.test(key)) return [{ id: id("kimi"), provider: "kimi", agent, label: "Kimi", sub: sub("Kimi Code plan"), icon, tint, from: { kimi: true, ...at } }];
+  if (key === "copilot") return [{ id: id("copilot"), provider: "copilot", agent, label: "copilot", sub: sub("GitHub Copilot"), icon, tint, from: { copilot: true, ...at } }];
   const h = HARNESS[key];
   if (!h) return [labelled(v)];
   const isPi = key === "pi";
   const [piProvider, model, , defaultProfile] = v.piModel ?? [];
   if (isPi && !model) return [labelled(v, "model unavailable")];
   const fields = isPi ? { model } : {};
-  const config = isPi ? null : await json(".config/opencode/opencode.json");
+  const config = isPi ? null : await json(".config/opencode/opencode.json", on);
   const entry = isPi ? piProvider : (typeof config?.model === "string" ? config.model.split("/")[0] : null);
   if (!isCurrent()) return [];
   if (key === "opencode" && usageSource === "omarchy"
-      && (entry === "openai" || (!entry && config?.providers?.openai))) return [omarchySource(v)];
+      && (entry === "openai" || (!entry && config?.providers?.openai))) return [omarchySource(v, on)];
   if (!isCurrent()) return [];
   const provider = Object.hasOwn(UNDER, entry) ? UNDER[entry] : null;
   if (isPi && provider && (defaultProfile !== true || v.terminal?.includes("/"))) {
     return [{ ...labelled(v, "quota unavailable for this Pi profile"), ...fields }];
   }
-  const auth = provider ? (await json(h.auth))?.[entry] : null;
+  const auth = provider ? (await json(h.auth, on))?.[entry] : null;
   if (!provider || auth?.type !== "oauth") {
     const source = { ...labelled(v, `${entry ?? "its provider"}: no usage API`), ...fields };
-    return key === "opencode" ? [{ ...source, from: { harness: key, entry: entry ?? null } }] : [source];
+    return key === "opencode" ? [{ ...source, from: { harness: key, entry: entry ?? null, ...at } }] : [source];
   }
   // Same ChatGPT account as Codex's own login: share its numbers and its fresher token.
-  if (provider === "codex" && auth.accountId && auth.accountId === (await json(".codex/auth.json"))?.tokens?.account_id) {
-    return [{ ...fields, id: "codex", provider, agent, label: key, sub: `via ${entry} (Codex login)`, icon, tint, from: { codex: true, ...(key === "opencode" ? { harness: key, entry } : {}) } }];
+  if (provider === "codex" && auth.accountId && auth.accountId === (await json(".codex/auth.json", on))?.tokens?.account_id) {
+    return [{ ...fields, id: id("codex"), provider, agent, label: key, sub: sub(`via ${entry} (Codex login)`), icon, tint, from: { codex: true, ...(key === "opencode" ? { harness: key, entry } : {}), ...at } }];
   }
-  return [{ ...fields, id: `${key}.${provider}`, provider, agent, label: key, sub: `via ${entry}`, icon, tint, from: { harness: key, entry } }];
+  return [{ ...fields, id: id(`${key}.${provider}`), provider, agent, label: key, sub: sub(`via ${entry}`), icon, tint, from: { harness: key, entry, ...at } }];
 }
 
 export async function fetchUsage(src, withMetadata = false) {
   let result;
-  if (src.from?.omarchy === "codex") result = omarchyUsage(await json(".local/state/omarchy/agents/usage/codex.json"));
+  if (src.from?.omarchy === "codex") result = omarchyUsage(await json(".local/state/omarchy/agents/usage/codex.json", src.from.on ?? null));
   else {
     const c = await creds(src);
     if (c.expires && c.expires < Date.now()) throw new Error(`token expired, use ${src.agent} to refresh it`);

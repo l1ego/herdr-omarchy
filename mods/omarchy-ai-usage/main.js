@@ -1,7 +1,7 @@
 import { surface, UI } from "./ui.js";
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, exec, focused, home, panes, terminals, shared, setShared, props, openOverlay, settings, theme } from "herdr";
+import { agents, exec, focused, panes, terminals, shared, setShared, props, openOverlay, settings, theme } from "herdr";
 
 import { PROVIDERS, sourcesFor, fetchUsage } from "./providers.js";
 import { clock, pace, resets, resetsShort } from "./time.js";
@@ -35,7 +35,7 @@ async function refreshOne(src) {
 const shownList = () => shared(SHOWN)?.list ?? [];
 const isOpenCodeSource = src => src.from?.harness === "opencode"
   || (src.id === "none.opencode" && src.agent === "OpenCode")
-  || (src.id === "codex" && src.agent === "OpenCode" && src.label === "opencode" && src.from?.codex === true);
+  || (src.id.replace(/@.*$/, "") === "codex" && src.agent === "OpenCode" && src.label === "opencode" && src.from?.codex === true);
 const sourceSignature = (vis, usageSource) => `${vis.map(v => JSON.stringify([v.terminal, v.program.key, v.piModel])).join(",")}|${usageSource ?? ""}`;
 const uniqueSources = list => {
   const sources = new Map();
@@ -105,11 +105,14 @@ export default class AiUsage extends View {
 
   // CLAUDE_CONFIG_DIR is per process; Linux /proc ties it to the Herdr terminal (HC_TERMINAL_ID).
   // Looked up afresh each time: the same tab can start `ccw`, quit, then start `ccp`.
-  async claudeDirOf(terminal) {
-    const r = await exec("sh", ["-c", `found=; for f in $(grep -lzx "HC_TERMINAL_ID=$1" /proc/[0-9]*/environ 2>/dev/null); do found=1; grep -zs '^CLAUDE_CONFIG_DIR=' "$f" | tr '\\0' '\\n'; done; [ -n "$found" ]`, "_", terminal]).catch(() => null);
+  // On another machine (`on`) the lookup runs there, by the terminal's ID on that machine.
+  // Without CLAUDE_CONFIG_DIR: ".claude", in the home of the machine it runs on.
+  async claudeDirOf(terminal, on = null) {
+    const id = on && terminal?.startsWith(`${on}/`) ? terminal.slice(on.length + 1) : terminal;
+    const r = await exec("sh", ["-c", `found=; for f in $(grep -lzx "HC_TERMINAL_ID=$1" /proc/[0-9]*/environ 2>/dev/null); do found=1; grep -zs '^CLAUDE_CONFIG_DIR=' "$f" | tr '\\0' '\\n'; done; [ -n "$found" ]`, "_", id], { on }).catch(() => null);
     if (r?.code !== 0) return null;
     const dir = (r.stdout ?? "").split("\n").find(l => l.startsWith("CLAUDE_CONFIG_DIR="))?.slice(18);
-    return dir || `${home()}/.claude`;
+    return dir || ".claude";
   }
 
   // Rebuild source descriptors before any refresh, including requests from the popup.
@@ -150,7 +153,7 @@ export default class AiUsage extends View {
     const stillCurrent = () => generation === this.discoveryGeneration && sourceSignature(visible(), props()?.usage_source) === sig;
     if (vis.length) {
       const list = [];
-      for (const v of vis) list.push(...await sourcesFor(v, terminal => this.claudeDirOf(terminal), choice, stillCurrent));
+      for (const v of vis) list.push(...await sourcesFor(v, (terminal, on) => this.claudeDirOf(terminal, on), choice, stillCurrent));
       if (!stillCurrent()) return false;
       const next = { list: uniqueSources(list), idle: false };
       if (JSON.stringify(shared(SHOWN)) !== JSON.stringify(next)) setShared(SHOWN, next);
@@ -162,9 +165,9 @@ export default class AiUsage extends View {
     const list = [];
     for (const src of prev.list) {
       if (!isOpenCodeSource(src)) { list.push(src); continue; }
-      list.push(...await sourcesFor({ terminal: null, program: {
+      list.push(...await sourcesFor({ terminal: null, machine: src.from?.on ?? null, program: {
         key: "opencode", name: src.agent || "OpenCode", icon: src.icon, tint: src.tint,
-      } }, terminal => this.claudeDirOf(terminal), choice, stillCurrent));
+      } }, (terminal, on) => this.claudeDirOf(terminal, on), choice, stillCurrent));
     }
     if (!stillCurrent() || JSON.stringify(shared(SHOWN)?.list) !== JSON.stringify(prev.list)) return false;
     const next = { ...prev, list: uniqueSources(list), idle: true };
