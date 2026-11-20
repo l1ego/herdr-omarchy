@@ -11,7 +11,7 @@ const JPEG = Buffer.from('ffd8ffe000104a4649460001', 'hex');
 const picture = (magic, text) => Buffer.concat([magic, Buffer.from(text)]);
 const shows = async (path, text) => assert.ok((await readFile(path)).toString('latin1').endsWith(text));
 const source = await readFile(new URL('../mods/omarchy-bar/wallpaper.js', import.meta.url), 'utf8');
-const load = () => import(`data:text/javascript;base64,${Buffer.from(source.replace(/import .* from "herdr";/, 'const { exec, appHome, layout, home, settings, readTextFile, window } = globalThis.wallpaperTest;')).toString('base64')}#${Math.random()}`);
+const load = () => import(`data:text/javascript;base64,${Buffer.from(source.replace(/import .* from "herdr";/, 'const { exec, appHome, layout, home, settings, readTextFile, writeTextFile, window } = globalThis.wallpaperTest;')).toString('base64')}#${Math.random()}`);
 
 test('desktop wallpaper follows symlink changes and same-path edits; missing links fall back', async () => {
   const root = await mkdtemp(`${tmpdir()}/herdr-wallpaper-`);
@@ -99,7 +99,14 @@ async function desktopCase(platform, run) {
     home: () => root, appHome: () => app, layout: () => state.current,
     settings: () => ({ theme: 'test' }),
     window: () => ({ platform }),
-    readTextFile: async () => JSON.stringify({ follow_desktop_wallpaper: state.follow }),
+    readTextFile: async () => JSON.stringify({ follow_desktop_wallpaper: state.follow, zoom: 1.2 }),
+    writeTextFile: async (path, text, expected) => {
+      assert.equal(path, `${app}/settings.json`);
+      assert.equal(expected, await globalThis.wallpaperTest.readTextFile());
+      const prefs = JSON.parse(text);
+      assert.equal(prefs.zoom, 1.2);
+      state.follow = prefs.follow_desktop_wallpaper;
+    },
     exec: async (cmd, args) => {
       state.calls.push([cmd, args]);
       if (cmd === 'herdr-app') {
@@ -141,9 +148,6 @@ test('GNOME wallpaper is followed only when asked, dark picture in dark mode', (
     state.follow = true;
     await mod.matchWallpaper('test');
     await shows(`${app}/${state.current.background.image}`, 'light image');
-    const shown = state.current.background.image;
-    await mod.nextWallpaper();
-    assert.equal(state.current.background.image, shown);
     state.dark = true;
     await mod.matchWallpaper('test');
     await shows(`${app}/${state.current.background.image}`, 'dark image');
@@ -158,6 +162,25 @@ test('GNOME wallpaper is followed only when asked, dark picture in dark mode', (
     state.follow = false;
     await mod.matchWallpaper('test');
     assert.equal(state.current.background.image, 'backgrounds/omarchy/test/1.png');
+  }));
+
+test('Next wallpaper on GNOME stops following the desktop and cycles theme wallpapers', () =>
+  desktopCase('linux', async (mod, state, root) => {
+    const image = `${root}/desktop.jpg`;
+    await writeFile(image, picture(JPEG, 'desktop image'));
+    state.desktop = `file://${image}`;
+    state.follow = true;
+    await mod.matchWallpaper('test');
+    assert.match(state.current.background.image, /^backgrounds\/desktop\//);
+
+    await mod.nextWallpaper();
+    assert.equal(state.current.background.image, 'backgrounds/omarchy/test/1.png');
+    assert.equal(state.follow, false);
+    await mod.matchWallpaper('test');
+    assert.equal(state.current.background.image, 'backgrounds/omarchy/test/1.png');
+    await mod.nextWallpaper();
+    assert.equal(state.current.background.image, 'backgrounds/omarchy/test/2.png');
+    assert.ok(!state.calls.some(([cmd, args]) => cmd === 'gsettings' && args[0] === 'set'));
   }));
 
 test('Windows wallpaper is read and copied through PowerShell', () =>

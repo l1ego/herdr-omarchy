@@ -1,4 +1,4 @@
-import { exec, appHome, layout, home, settings, readTextFile, window } from "herdr";
+import { exec, appHome, layout, home, settings, readTextFile, writeTextFile, window } from "herdr";
 
 export const desktopDirectory = () => `${home()}/.local/state/omarchy/current`;
 
@@ -125,17 +125,32 @@ export function matchWallpaper(name) {
   return updating;
 }
 
-// Omarchy: its own next wallpaper. Another desktop being followed: nothing (Herdr leaves the system's alone).
-export async function nextWallpaper() {
-  const source = await desktopSource();
-  if (source?.omarchy) {
-    await exec("omarchy-theme-bg-next", []).catch(() => null);
-    return;
-  }
-  if (source && (await cached(source.path))) return;
-  const all = await wallpapers(settings().theme);
-  if (!all.length) return;
-  await setWallpaper(all[(all.indexOf(wallpaperLayout()?.background?.image) + 1) % all.length]);
+export function nextWallpaper() {
+  updating = updating.catch(() => {}).then(async () => {
+    const source = await desktopSource();
+    if (source?.omarchy) {
+      await exec("omarchy-theme-bg-next", []).catch(() => null);
+      return;
+    }
+    const all = await wallpapers(settings().theme);
+    if (!all.length) return;
+    if (source && (await cached(source.path))) {
+      if (window()?.platform !== "linux") return;
+      const file = `${appHome()}/settings.json`;
+      try {
+        const raw = await readTextFile(file);
+        const prefs = JSON.parse(raw ?? "{}");
+        if (prefs.follow_desktop_wallpaper === true) {
+          prefs.follow_desktop_wallpaper = false;
+          await writeTextFile(file, JSON.stringify(prefs, null, 2) + "\n", raw);
+        }
+      } catch {
+        return;
+      }
+    }
+    await setWallpaper(all[(all.indexOf(wallpaperLayout()?.background?.image) + 1) % all.length]);
+  });
+  return updating;
 }
 
 // A theme's wallpapers: backgrounds/omarchy/<theme>/, in name order. None: [].
