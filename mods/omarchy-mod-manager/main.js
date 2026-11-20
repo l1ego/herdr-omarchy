@@ -5,7 +5,7 @@
 import { surface, button as uiButton, UI } from "./ui.js";
 import { View, div, uniform_list } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input, Scrollbar, VirtualListScrollHandle } from "gpui-base";
-import { exec, appHome, readTextFile, writeTextFile, shared, setShared, props, closeOverlay, notify, theme, run, knownAgents, settings } from "herdr";
+import { exec, appHome, readTextFile, writeTextFile, shared, setShared, props, closeOverlay, notify, theme, run, knownAgents, settings, window } from "herdr";
 import * as core from "./core.js";
 import { palette, readable } from "./palette.js";
 
@@ -21,8 +21,22 @@ const HINTS = {
   review: [["y", "install"], ["o", "open repo"], ["esc", "cancel"]],
 };
 
+// Windows has no find, rm, cp, mkdir or ls. Git for Windows, which cloning needs anyway,
+// ships them in usr\bin beside its cmd\git.exe: run them from there.
+const UNIX_TOOLS = new Set(["find", "rm", "cp", "mkdir", "ls"]);
+let unixBin = null;
+async function execHere(cmd, args, opts) {
+  if (window()?.platform !== "windows" || !UNIX_TOOLS.has(cmd)) return exec(cmd, args, opts);
+  unixBin ??= exec("where", ["git"]).then((r) => {
+    const git = r?.code === 0 ? r.stdout.split(/\r?\n/).map((l) => l.trim()).find((l) => /\\cmd\\git\.exe$/i.test(l)) : null;
+    return git ? git.replace(/\\cmd\\git\.exe$/i, "\\usr\\bin") : null;
+  }, () => null);
+  const bin = await unixBin;
+  return exec(bin ? `${bin}\\${cmd}.exe` : cmd, args, opts);
+}
+
 const io = {
-  exec: (cmd, args, opts) => exec(cmd, args, opts),
+  exec: (cmd, args, opts) => execHere(cmd, args, opts),
   readText: (path) => readTextFile(path),
   async writeText(path, text) {
     await writeTextFile(path, text, await readTextFile(path));
@@ -109,7 +123,7 @@ export default class ModManager extends View {
     cx.timer.after(100, () => this.handle.focus());
     cx.spawn(async (cx) => this.refresh(cx));
     // A panel closed while cloning can't clean up after itself; its clone goes the next time.
-    exec("find", [cacheDir(), "-mindepth", "1", "-maxdepth", "1", "-mmin", "+60", "-exec", "rm", "-rf", "{}", "+"]).catch(() => {});
+    execHere("find", [cacheDir(), "-mindepth", "1", "-maxdepth", "1", "-mmin", "+60", "-exec", "rm", "-rf", "{}", "+"]).catch(() => {});
     if (props()?.start === "market") {
       this.mode = "market";
       cx.spawn(async (cx) => this.loadMarket(cx, true));
@@ -124,7 +138,7 @@ export default class ModManager extends View {
 
   // Closing the panel mid-review leaves no clone behind.
   async close() {
-    if (this.review) await exec("rm", ["-rf", this.review.fetched.dir]);
+    if (this.review) await execHere("rm", ["-rf", this.review.fetched.dir]);
   }
 
   async refresh(cx) {
@@ -187,7 +201,7 @@ export default class ModManager extends View {
       const fetched = await core.fetchSource(io, source, cacheDir());
       const packages = core.findPackages(fetched.files);
       if (!packages.length) {
-        await exec("rm", ["-rf", fetched.dir]);
+        await execHere("rm", ["-rf", fetched.dir]);
         throw new Error(`${source} has no mods/<name>/main.js folder`);
       }
       this.review = { source, fetched, packages, at: 0, plan: null, pkg: null };
@@ -199,7 +213,7 @@ export default class ModManager extends View {
   async planFor(pkg) {
     const r = this.review;
     const record = records().find((x) => x.source === r.source && x.prefix === pkg.prefix) ?? null;
-    const layouts = (await exec("ls", [`${appHome()}/layouts`])).stdout.split("\n").filter(Boolean);
+    const layouts = (await execHere("ls", [`${appHome()}/layouts`])).stdout.split("\n").filter(Boolean);
     r.pkg = pkg;
     r.record = record;
     r.plan = await core.planInstall(io, {
@@ -209,7 +223,7 @@ export default class ModManager extends View {
   }
 
   async finishReview() {
-    if (this.review) await exec("rm", ["-rf", this.review.fetched.dir]);
+    if (this.review) await execHere("rm", ["-rf", this.review.fetched.dir]);
     this.review = null;
   }
 
@@ -270,7 +284,7 @@ export default class ModManager extends View {
         try {
           const pkg = core.findPackages(fetched.files).find((p) => p.prefix === rec.prefix);
           if (!pkg) { skipped.push(`${rec.source}: the package is gone from the repo`); continue; }
-          const layouts = (await exec("ls", [`${appHome()}/layouts`])).stdout.split("\n").filter(Boolean);
+          const layouts = (await execHere("ls", [`${appHome()}/layouts`])).stdout.split("\n").filter(Boolean);
           const plan = await core.planInstall(io, { appHome: appHome(), dir: fetched.dir, pkg, record: rec, existingMods: this.mods.map((m) => m.name), existingLayouts: layouts });
           const before = new Set(rec.risks ?? []);
           const fresh = plan.risks.map((x) => x.label).filter((l) => !before.has(l));
@@ -280,7 +294,7 @@ export default class ModManager extends View {
           this.updates[rec.source] = null;
           done.push(pkg.name);
         } finally {
-          await exec("rm", ["-rf", fetched.dir]);
+          await execHere("rm", ["-rf", fetched.dir]);
         }
       }
       this.mods = await core.listMods(io, { appHome: appHome(), records: records() });
@@ -325,7 +339,8 @@ export default class ModManager extends View {
   }
 
   openUrl(url) {
-    exec("xdg-open", [url]).catch(() => exec("open", [url]));
+    if (window()?.platform === "windows") exec("explorer", [url]).catch(() => {});
+    else exec("xdg-open", [url]).catch(() => exec("open", [url]));
   }
 
   ask(mod) {
