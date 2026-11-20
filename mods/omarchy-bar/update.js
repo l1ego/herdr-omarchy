@@ -2,7 +2,9 @@ import { exec, home, appHome, readTextFile, writeTextFile, shared, setShared, no
 
 // The bar keeps the layout up to date with this repo's main: it checks, the person applies it from
 // Mod Manager. Its own clone, apart from any checkout the person works in.
-export const REPO = "https://github.com/shafiqimtiaz/herdr-omarchy.git";
+// This fork's main is upstream's (shafiqimtiaz/herdr-omarchy) plus our own changes, so an update
+// keeps them; upstream's news reach it through .github/workflows/sync-upstream.yml.
+export const REPO = "https://github.com/l1ego/herdr-omarchy.git";
 export const RECORD = "omarchy-bar.update"; // { sha, layout }: what was applied last
 export const AVAILABLE = "omarchy-bar.update-available"; // { sha, mods } while main is ahead of RECORD
 const clone = () => `${home()}/.cache/herdr-omarchy`;
@@ -13,16 +15,29 @@ const git = async (args) => {
   return r?.code === 0 ? r.stdout.trim() : null;
 };
 
+// Windows has no sh, rm, find or cp. Git for Windows, which the clone needs anyway, ships them in
+// usr\bin beside its cmd\git.exe: run them from there. Without it, null: no update on Windows.
+const windows = () => window()?.platform === "windows";
+let unixBin = null;
+async function tool(cmd) {
+  if (!windows()) return cmd;
+  unixBin ??= exec("where", ["git"]).then((r) => {
+    const git = r?.code === 0 ? r.stdout.split(/\r?\n/).map((l) => l.trim()).find((l) => /\\cmd\\git\.exe$/i.test(l)) : null;
+    return git ? git.replace(/\\cmd\\git\.exe$/i, "\\usr\\bin") : null;
+  }, () => null);
+  const bin = await unixBin;
+  return bin ? `${bin}\\${cmd}.exe` : null;
+}
+
 // Fetches main into the clone and says whether it is ahead: the sidebar's Mods row shows a dot,
-// and Mod Manager marks the layout's mods. Windows has no sh for the copy, so it is left out.
-// Checks and updates take turns: both use the one clone.
+// and Mod Manager marks the layout's mods. Checks and updates take turns: both use the one clone.
 let queue = Promise.resolve();
 const inTurn = (job) => (queue = queue.catch(() => {}).then(job));
 
 export const checkUpdate = () => inTurn(check);
 
 async function check() {
-  if (window()?.platform === "windows") return;
+  if (!(await tool("sh"))) return;
   const sha = await fetchMain();
   if (!sha) return;
   const ahead = sha !== shared(RECORD)?.sha;
@@ -37,7 +52,7 @@ async function fetchMain() {
     if ((await git(["-C", dir, "fetch", "-q", "--depth", "1", REPO, "main"])) === null) return null;
     if ((await git(["-C", dir, "reset", "-q", "--hard", "FETCH_HEAD"])) === null) return null;
   } else {
-    await exec("rm", ["-rf", dir]).catch(() => null);
+    await exec(await tool("rm"), ["-rf", dir]).catch(() => null);
     if ((await git(["clone", "-q", "--depth", "1", "--branch", "main", REPO, dir])) === null) return null;
   }
   return git(["-C", dir, "rev-parse", "HEAD"]);
@@ -70,7 +85,7 @@ async function mergeKeys(dir) {
   if (added) await writeTextFile(file, JSON.stringify(theirs, null, 2) + "\n", raw);
 }
 
-// The layout file also holds the person's wallpaper, theme pair and title bar choice, so it is
+// The layout file also holds the person's wallpaper, theme pair, title bar and fonts, so it is
 // only replaced when main changed it, and those stay. Without a record of the last update it stays as it is.
 async function updateLayout(dir, blob) {
   const last = shared(RECORD)?.layout;
@@ -83,12 +98,19 @@ async function updateLayout(dir, blob) {
   if (mine?.background?.image) next.background = { ...next.background, image: mine.background.image };
   if (mine?.theme) next.theme = mine.theme;
   if (mine?.titlebar) next.titlebar = mine.titlebar;
+  // Fonts too: one the person removed lets Prefs (settings.json) choose, and a layout's font beats them.
+  for (const k of ["font", "ui_font"]) {
+    if (!mine) break;
+    if (k in mine) next[k] = mine[k];
+    else delete next[k];
+  }
   await writeTextFile(file, JSON.stringify(next, null, 2) + "\n", raw);
 }
 
 // Copies only files that differ, so unchanged mods don't reload.
 async function copyFiles(dir, paths) {
   const script = `
+    PATH="/usr/bin:$PATH"
     cd "$1" || exit 1
     to=$2
     shift 2
@@ -98,14 +120,37 @@ async function copyFiles(dir, paths) {
       fi
     done
   `;
-  const r = await exec("sh", ["-c", script, "sh", dir, appHome(), ...paths]).catch(() => null);
+  const r = await exec(await tool("sh"), ["-c", script, "sh", dir, appHome(), ...paths]).catch(() => null);
   return r?.code === 0;
+}
+
+// Where each mod sits is the person's choice ("none" keeps one out of a layout): it survives updates.
+async function places(mods) {
+  const out = new Map();
+  for (const m of mods) {
+    const place = parse(await readTextFile(`${appHome()}/${m}/mod.json`))?.place;
+    if (place !== undefined) out.set(m, place);
+  }
+  return out;
+}
+async function keepPlaces(saved) {
+  for (const [m, place] of saved) {
+    const file = `${appHome()}/${m}/mod.json`;
+    const raw = await readTextFile(file);
+    const next = parse(raw);
+    if (!next || next.place === place) continue;
+    next.place = place;
+    await writeTextFile(file, JSON.stringify(next, null, 2) + "\n", raw);
+  }
 }
 
 export const applyUpdate = () => inTurn(apply);
 
 async function apply() {
-  if (window()?.platform === "windows") return;
+  if (!(await tool("sh"))) {
+    notify({ title: "herdr-omarchy update failed", body: "Windows needs Git for Windows to update.", level: "error" });
+    return;
+  }
   const sha = await fetchMain();
   const blob = sha && (await git(["-C", clone(), "rev-parse", "HEAD:layouts/omarchy.json"]));
   if (!blob) {
@@ -116,7 +161,9 @@ async function apply() {
   await updateLayout(clone(), blob);
   const failed = () => notify({ title: "herdr-omarchy update failed", body: "Could not copy the files.", level: "error" });
   const others = (await git(["-C", clone(), "ls-tree", "--name-only", "HEAD", "mods/"]))?.split("\n").filter((m) => m !== "mods/omarchy-bar") ?? [];
+  const saved = await places(others);
   if (!others.length || !(await copyFiles(clone(), [...others, "themes", "backgrounds/omarchy", "layouts/omarchy.svg"]))) return failed();
+  await keepPlaces(saved);
   // Herdr reloads the bar once its own files change, which may end this function: record first.
   const before = shared(RECORD);
   setShared(RECORD, { sha, layout: blob });

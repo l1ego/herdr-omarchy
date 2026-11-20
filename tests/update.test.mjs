@@ -23,7 +23,7 @@ const commit = async (repo, files) => {
   return (await execute('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim();
 };
 
-test('update: main ahead is flagged, applied without losing the person\'s keys, wallpaper or theme', async () => {
+test('update: main ahead is flagged, applied without losing the person\'s keys, wallpaper, theme, fonts or mod places', async () => {
   const root = await mkdtemp(`${tmpdir()}/herdr-update-`);
   const repo = `${root}/repo`, app = `${root}/app`;
   const store = {}, notes = [];
@@ -41,17 +41,18 @@ test('update: main ahead is flagged, applied without losing the person\'s keys, 
     await mkdir(repo, { recursive: true });
     await execute('git', ['-C', repo, 'init', '-q', '-b', 'main']);
     const first = await commit(repo, {
-      'mods/omarchy-a/main.js': 'a1', 'mods/omarchy-bar/main.js': 'bar1', 'themes/x.json': '{}', 'backgrounds/omarchy/t/1.webp': 'img', 'layouts/omarchy.svg': '<svg/>',
+      'mods/omarchy-a/main.js': 'a1', 'mods/omarchy-a/mod.json': { place: 'right' }, 'mods/omarchy-bar/main.js': 'bar1', 'themes/x.json': '{}', 'backgrounds/omarchy/t/1.webp': 'img', 'layouts/omarchy.svg': '<svg/>',
       'layouts/omarchy.json': { background: { image: 'theirs.webp', fit: 'cover' }, theme: 't', v: 1 },
       'keys.json': { 'layout:omarchy': { k1: 'theirs', k2: 'new' } },
     });
     await put(app, {
       'keys.json': { 'layout:omarchy': { k1: 'mine' }, global: { g: 'x' } },
+      'mods/omarchy-a/mod.json': { place: 'none' },
       'layouts/omarchy.json': { background: { image: 'mine.webp' }, theme: { dark: 'x', light: 'y' }, titlebar: 'system', v: 0 },
     });
     const mod = await import(`data:text/javascript;base64,${Buffer.from(source
       .replace(/import .* from "herdr";/, 'const { exec, home, appHome, readTextFile, writeTextFile, shared, setShared, notify, window } = globalThis.updateTest;')
-      .replace(/https:\/\/github\.com\/shafiqimtiaz\/herdr-omarchy\.git/, repo)).toString('base64')}`);
+      .replace(/https:\/\/github\.com\/l1ego\/herdr-omarchy\.git/, repo)).toString('base64')}`);
     const json = async (p) => JSON.parse(await readFile(`${app}/${p}`, 'utf8'));
 
     await mod.checkUpdate();
@@ -60,6 +61,7 @@ test('update: main ahead is flagged, applied without losing the person\'s keys, 
     await mod.applyUpdate();
     assert.equal(await readFile(`${app}/mods/omarchy-a/main.js`, 'utf8'), 'a1');
     assert.equal(await readFile(`${app}/mods/omarchy-bar/main.js`, 'utf8'), 'bar1');
+    assert.equal((await json('mods/omarchy-a/mod.json')).place, 'none', 'the person\'s place stays');
     assert.equal(await readFile(`${app}/backgrounds/omarchy/t/1.webp`, 'utf8'), 'img');
     assert.deepEqual(await json('keys.json'), { 'layout:omarchy': { k1: 'mine', k2: 'new' }, global: { g: 'x' } });
     assert.equal((await json('layouts/omarchy.json')).v, 0, 'no record yet: the layout stays');
@@ -71,7 +73,7 @@ test('update: main ahead is flagged, applied without losing the person\'s keys, 
     assert.equal(store[mod.AVAILABLE], null);
 
     const themeTime = (await stat(`${app}/themes/x.json`)).mtimeMs;
-    const second = await commit(repo, { 'mods/omarchy-a/main.js': 'a2', 'layouts/omarchy.json': { background: { image: 'theirs.webp', fit: 'cover' }, theme: 't', v: 2 } });
+    const second = await commit(repo, { 'mods/omarchy-a/main.js': 'a2', 'layouts/omarchy.json': { background: { image: 'theirs.webp', fit: 'cover' }, theme: 't', font: 'Caskaydia', ui_font: 'Caskaydia', v: 2 } });
     await mod.checkUpdate();
     assert.equal(store[mod.AVAILABLE].sha, second);
 
@@ -85,6 +87,43 @@ test('update: main ahead is flagged, applied without losing the person\'s keys, 
     await commit(repo, { 'mods/omarchy-a/main.js': 'a3' });
     await mod.applyUpdate();
     assert.equal((await json('layouts/omarchy.json')).background.image, 'mine2.webp', 'layout unchanged on main: left alone');
+  } finally {
+    delete globalThis.updateTest;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('update: on Windows, sh, rm, find and cp come from Git for Windows', async () => {
+  const root = await mkdtemp(`${tmpdir()}/herdr-update-win-`);
+  const repo = `${root}/repo`, app = `${root}/app`;
+  const store = {}, notes = [], tools = [];
+  const bin = 'C:\\Tools\\Git\\usr\\bin';
+  globalThis.updateTest = {
+    home: () => root, appHome: () => app, window: () => ({ platform: 'windows' }),
+    shared: (k) => store[k], setShared: (k, v) => { store[k] = v; }, notify: (n) => notes.push(n),
+    readTextFile: (p) => readFile(p, 'utf8').catch(() => null),
+    writeTextFile: (p, text) => writeFile(p, text),
+    exec: async (cmd, args) => {
+      if (cmd === 'where') return { code: 0, stdout: 'C:\\Tools\\Git\\cmd\\git.exe\r\n' };
+      if (cmd.startsWith(`${bin}\\`)) { tools.push(cmd.slice(bin.length + 1)); cmd = cmd.slice(bin.length + 1, -4); }
+      else if (['sh', 'rm', 'find', 'cp'].includes(cmd)) return { code: 127, stdout: '' };
+      try { return { code: 0, ...(await execute(cmd, args)) }; }
+      catch (error) { return { code: error.code || 1, stdout: '' }; }
+    },
+  };
+  try {
+    await mkdir(repo, { recursive: true });
+    await execute('git', ['-C', repo, 'init', '-q', '-b', 'main']);
+    const sha = await commit(repo, { 'mods/omarchy-a/main.js': 'a1', 'mods/omarchy-bar/main.js': 'bar1', 'layouts/omarchy.json': {} });
+    const mod = await import(`data:text/javascript;base64,${Buffer.from(source
+      .replace(/import .* from "herdr";/, 'const { exec, home, appHome, readTextFile, writeTextFile, shared, setShared, notify, window } = globalThis.updateTest;')
+      .replace(/https:\/\/github\.com\/l1ego\/herdr-omarchy\.git/, repo)).toString('base64')}#win`);
+    await mod.checkUpdate();
+    assert.equal(store[mod.AVAILABLE].sha, sha);
+    await mod.applyUpdate();
+    assert.equal(await readFile(`${app}/mods/omarchy-a/main.js`, 'utf8'), 'a1');
+    assert.equal(store[mod.RECORD].sha, sha);
+    assert.ok(tools.includes('sh.exe') && tools.includes('rm.exe'), tools.join(','));
   } finally {
     delete globalThis.updateTest;
     await rm(root, { recursive: true, force: true });
