@@ -1,0 +1,56 @@
+name: Sync upstream
+
+# Brings shafiqimtiaz/herdr-omarchy's main into this fork's main once a day, keeping our commits.
+# A clean merge whose tests pass is pushed, and the Omarchy updater then offers it.
+# Otherwise a pull request holds upstream's main, to merge by hand.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Merge upstream
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/shafiqimtiaz/herdr-omarchy.git
+          git fetch -q upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "state=current" >> "$GITHUB_OUTPUT"
+          elif git merge --no-edit upstream/main && npm test; then
+            echo "state=merged" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort 2>/dev/null || git reset -q --hard origin/main
+            echo "state=conflict" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Push the merge
+        if: steps.merge.outputs.state == 'merged'
+        run: git push origin HEAD:main
+      - name: Open a pull request to merge by hand
+        if: steps.merge.outputs.state == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short=$(git rev-parse --short upstream/main)
+          branch="sync/upstream-$short"
+          git push -f origin "refs/remotes/upstream/main:refs/heads/$branch"
+          if ! gh pr view "$branch" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+              --title "Sync upstream $short" \
+              --body "Upstream's main doesn't merge cleanly into ours, or the tests fail after the merge. Merge it by hand, keeping our changes."
+          fi
