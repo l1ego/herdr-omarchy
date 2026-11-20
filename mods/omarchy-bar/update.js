@@ -120,7 +120,8 @@ async function copyFiles(dir, paths) {
       fi
     done
   `;
-  const r = await exec(await tool("sh"), ["-c", script, "sh", dir, appHome(), ...paths]).catch(() => null);
+  // exec stops waiting after 30 s by default; on Windows comparing every file takes about that long.
+  const r = await exec(await tool("sh"), ["-c", script, "sh", dir, appHome(), ...paths], { timeout: 600000 }).catch(() => null);
   return r?.code === 0;
 }
 
