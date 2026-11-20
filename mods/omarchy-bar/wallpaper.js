@@ -32,8 +32,10 @@ async function cached(src) {
   return r?.code === 0 ? r.stdout.trim() : null;
 }
 
+// A PowerShell string literal.
+const quote = (s) => `'${s.replace(/'/g, "''")}'`;
+
 async function cachedOnWindows(src) {
-  const quote = (s) => `'${s.replace(/'/g, "''")}'`;
   const script = `
     $ErrorActionPreference = 'Stop'
     $src = ${quote(src)}; $dir = ${quote(cache())}
@@ -137,11 +139,16 @@ export async function nextWallpaper() {
 }
 
 // A theme's wallpapers: backgrounds/omarchy/<theme>/, in name order. None: [].
+// Windows has no ls: PowerShell lists the folder there.
 export async function wallpapers(name) {
   const dir = `backgrounds/omarchy/${name}`;
-  const r = await exec("ls", ["-1", `${appHome()}/${dir}`]).catch(() => null);
+  const path = `${appHome()}/${dir}`;
+  const list = window()?.platform === "windows"
+    ? exec("powershell", ["-NoProfile", "-NonInteractive", "-Command", `[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-ChildItem -LiteralPath ${quote(path)} -File -Name | Sort-Object`])
+    : exec("ls", ["-1", path]);
+  const r = await list.catch(() => null);
   if (r?.code !== 0) return [];
-  return r.stdout.split("\n").filter((f) => /\.(webp|jpe?g|png)$/i.test(f)).map((f) => `${dir}/${f}`);
+  return r.stdout.split(/\r?\n/).filter((f) => /\.(webp|jpe?g|png)$/i.test(f)).map((f) => `${dir}/${f}`);
 }
 
 function findRoot(node) {
