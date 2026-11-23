@@ -30,7 +30,7 @@ test('agent rows render local IDs and remote addresses, keeping the expanded rem
         since: () => null, status: () => null, squeezed: false, byPriority: false,
       }, '}; row(agent, 0);');
       assert.equal(result.tooltip, `Build · ${address}`);
-      assert.equal(result.children.includes('vps'), !collapsed && address.startsWith('vps/'));
+      if (!collapsed) assert.ok(result.children.includes(address.startsWith('vps/') ? 'vps t7' : 't7'));
     }
   }
 });

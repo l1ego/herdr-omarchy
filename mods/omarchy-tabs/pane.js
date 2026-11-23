@@ -38,6 +38,8 @@ export function renderPaneHeader(view) {
     .when(Boolean(pic), el => el.child(pic))
     .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).tooltip(name).child(name))
     .child(div().flex_1().truncate().text_color(t.dim).child(folder(p.cwd)))
+    // The address other agents' messages name (<hc from="t4r">), as the terminal's core gives it.
+    .when(Boolean(p.terminal), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(p.terminal.split("/").pop())))
     .when(p.status === "working", el => el.child(svg("mods/omarchy-tabs/icons/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
     .when(p.status === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
     .when(p.status === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))

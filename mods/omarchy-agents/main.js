@@ -210,6 +210,7 @@ export default class Agents extends View {
         .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(0))))
       .when(Boolean(pic), el => el.child(div().mr(8).child(pic)))
       .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(k.name || k.template || k.program?.name || k.address))
+      .child(div().flex_none().mr(6).text_size(10).text_color(t.dim).child(k.address.split("/").pop()))
       .child(this.status(t, { status: st }, compact))
       .when(this.hovered === k.address || this.arming === k.address, (el) => el.child(this.closer(t, k.address, st)));
   }
@@ -397,7 +398,10 @@ export default class Agents extends View {
       const also = full ? more ?? (a.space_name !== where ? a.space_name : null) : more ? where : null;
       // Two cut-off halves ("flexspring-wizar… · …") read as broken: the second shows only when both fit whole.
       const fitsMore = Boolean(also) && also !== name && (name?.length ?? 0) + also.length + 3 <= room();
+      // The terminal's address as its core gives it, the one other agents' messages name
+      // (<hc from="t4r">), after the machine when the agent runs on another one.
       const machine = a.address.includes("/") ? a.address.split("/")[0] : null;
+      const own = a.address.split("/").pop();
       return h_flex()
         .id(`ag-${a.address}`)
         .tooltip([name, also !== name ? also : null, a.address].filter(Boolean).join(" · "))
@@ -428,7 +432,7 @@ export default class Agents extends View {
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
           .child(div().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(name))
           .when(fitsMore, el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${also}`))))
-        .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
+        .child(div().flex_none().text_size(10).text_color(t.dim).child(machine ? `${machine} ${own}` : own))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
         .when(Boolean(when) && !squeezed, el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
