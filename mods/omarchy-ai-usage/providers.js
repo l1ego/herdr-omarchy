@@ -32,6 +32,17 @@ const spanName = s => (s >= 7 * DAY ? "Weekly limit" : `${Math.round(s / H)}-hou
 const spanShort = s => (s >= DAY ? `${Math.round(s / DAY)}d` : `${Math.round(s / H)}h`);
 const win = (span, used, resetsAt, extra) => ({ short: spanShort(span), long: spanName(span), span, used: Math.round(used), resets_at: resetsAt, ...extra });
 
+// The ChatGPT credits Codex spends once a window runs out: the balance, and how many local
+// messages it buys (a range, as the cost depends on the model and task). None on a plan without.
+function codexCredits(c) {
+  if (!c || (!c.has_credits && !c.unlimited)) return null;
+  const balance = Number(c.balance);
+  if (!c.unlimited && !Number.isFinite(balance)) return null;
+  const m = c.approx_local_messages;
+  const messages = Array.isArray(m) && m.length === 2 && m.every(Number.isFinite) ? [m[0], m[1]] : null;
+  return { balance: c.unlimited ? null : balance, unlimited: Boolean(c.unlimited), messages };
+}
+
 // Quota endpoints, each on the provider's own host. `creds` never leaves fetch time.
 export const PROVIDERS = {
   claude: {
@@ -64,9 +75,11 @@ export const PROVIDERS = {
         headers: { Authorization: `Bearer ${c.token}`, "ChatGPT-Account-Id": c.account ?? "", Accept: "application/json" },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const rl = (await res.json()).rate_limit ?? {};
-      return [rl.primary_window, rl.secondary_window].filter(w => w && typeof w.used_percent === "number")
+      const data = await res.json();
+      const rl = data.rate_limit ?? {};
+      const windows = [rl.primary_window, rl.secondary_window].filter(w => w && typeof w.used_percent === "number")
         .map(w => win(w.limit_window_seconds * 1e3, w.used_percent, isoOf(w.reset_at * 1e3)));
+      return { windows, credits: codexCredits(data.credits) };
     },
   },
   openai: { name: "ChatGPT", color: "#7A9DFF" },
@@ -254,7 +267,9 @@ export async function fetchUsage(src, withMetadata = false) {
   else {
     const c = await creds(src);
     if (c.expires && c.expires < Date.now()) throw new Error(`token expired, use ${src.agent} to refresh it`);
-    result = { windows: await PROVIDERS[src.provider].usage(c) };
+    // A provider returns its windows, or { windows, credits } when it has more to tell.
+    const got = await PROVIDERS[src.provider].usage(c);
+    result = Array.isArray(got) ? { windows: got } : got;
   }
   return withMetadata ? result : result.windows;
 }

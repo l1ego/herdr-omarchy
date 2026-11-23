@@ -88,6 +88,24 @@ test('Codex sends account ID and normalizes timestamps', async () => {
   assert.equal(h.requests[0].headers['ChatGPT-Account-Id'], 'account');
 });
 
+test('Codex keeps the credits balance left once a window runs out', async () => {
+  const login = { '/home/test/.codex/auth.json': { tokens: { access_token: 'codex-token', account_id: 'account' } } };
+  const h = usageHarness(login, {
+    rate_limit: { primary_window: { limit_window_seconds: 18000, used_percent: 100, reset_at: 1800000000 } },
+    credits: { has_credits: true, unlimited: false, balance: '50992.6336290000', approx_local_messages: [12748, 66290] },
+  });
+  await h.refreshOne(codex);
+  assert.deepEqual(h.state.get('omarchy-ai-usage.codex').credits, { balance: 50992.633629, unlimited: false, messages: [12748, 66290] });
+  for (const credits of [{ has_credits: false, unlimited: false, balance: '0' }, null, { has_credits: true, balance: 'n/a' }]) {
+    const none = usageHarness(login, { rate_limit: {}, credits });
+    await none.refreshOne(codex);
+    assert.equal(none.state.get('omarchy-ai-usage.codex').credits, undefined);
+  }
+  const unlimited = usageHarness(login, { rate_limit: {}, credits: { has_credits: true, unlimited: true, balance: null } });
+  await unlimited.refreshOne(codex);
+  assert.deepEqual(unlimited.state.get('omarchy-ai-usage.codex').credits, { balance: null, unlimited: true, messages: null });
+});
+
 const kimi = { id: 'kimi', provider: 'kimi', agent: 'Kimi', from: { kimi: true } };
 const kimiLogin = (extra = {}) => ({ '/home/test/.kimi-code/credentials/kimi-code.json': { access_token: 'kimi-token', expires_at: Math.floor(Date.now() / 1000) + 600, ...extra } });
 

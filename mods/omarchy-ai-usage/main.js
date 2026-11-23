@@ -25,8 +25,8 @@ async function refreshOne(src) {
   const prev = shared(keyOf(src.id)) ?? {};
   const now = new Date().toISOString();
   try {
-    const { windows, fetched } = await fetchUsage(src, true);
-    setShared(keyOf(src.id), { checked: now, fetched: fetched ?? now, error: null, windows });
+    const { windows, fetched, credits } = await fetchUsage(src, true);
+    setShared(keyOf(src.id), { checked: now, fetched: fetched ?? now, error: null, windows, ...(credits ? { credits } : {}) });
   } catch (e) {
     setShared(keyOf(src.id), { ...prev, checked: now, error: String(e?.message ?? e) });
   } finally { refreshing.delete(src.id); }
@@ -186,7 +186,10 @@ export default class AiUsage extends View {
     const b = this.anchor;
     const z = Number(settings()?.zoom) || 1;
     const list = shownList();
-    const rows = list.reduce((n, s) => n + Math.max(1, shared(keyOf(s.id))?.windows?.length ?? 0), 0);
+    const rows = list.reduce((n, s) => {
+      const u = shared(keyOf(s.id));
+      return n + Math.max(1, u?.windows?.length ?? 0) + (u?.credits ? 1 : 0);
+    }, 0);
     const want = 90 + list.length * 100 + rows * 75;
     const below = b && b.y / z < 200;
     const height = !b || below ? want : Math.min(want, b.y / z - GAP);
@@ -231,7 +234,8 @@ export default class AiUsage extends View {
           .child(div().text_color(t.dim).child(w.short))
           .child(div().w(70).child(meter(w, stale, t, 5)))
           .child(div().w(28).text_color(stale ? t.dim : w.used >= 80 ? color(w, stale, t) : t.muted).child(`${w.used}%`))
-          .child(div().w(78).flex_none().whitespace_nowrap().text_size(11).text_color(!stale && w.used >= 80 ? color(w, stale, t) : t.dim).child(`↻ ${resetsShort(w)}`))));
+          .child(div().w(78).flex_none().whitespace_nowrap().text_size(11).text_color(!stale && w.used >= 80 ? color(w, stale, t) : t.dim).child(`↻ ${resetsShort(w)}`))))
+        .when(Boolean(u?.credits), el => el.child(div().flex_none().whitespace_nowrap().text_color(t.dim).child(creditsShort(u.credits))));
     });
     return this.clickable(this.shell(h_flex())).pl(12).pr(8).gap(12).text_size(11.8).child(v_flex().gap(2).children(rows));
   }
@@ -261,7 +265,9 @@ export default class AiUsage extends View {
         .when(s.model || s.provider === "claude", el => el.child(div().whitespace_nowrap().text_color(stale ? t.dim : t.foreground).child(s.model ?? s.label)))
         .when(Boolean(s.note) || !first, el => el.child(div().whitespace_nowrap().text_color(t.dim).child(s.note ?? (u?.error ? "no data" : u?.fetched ? "no limits" : "…"))))
         .when(Boolean(first), el => el.child(win(first)))
-        .when(Boolean(second), el => el.child(win(second)));
+        .when(Boolean(second), el => el.child(win(second)))
+        // Credits pay once a window runs out; with three providers or more, only the popup has room.
+        .when(Boolean(u?.credits) && n <= 2, el => el.child(div().whitespace_nowrap().text_color(t.dim).child(creditsShort(u.credits))));
     });
     // The same │ the bar puts between space and folder, only between segments.
     const sep = i => div().id(`usage-sep-${i}`).flex_none().text_color(t.border).child("│");
@@ -290,6 +296,13 @@ export default class AiUsage extends View {
             .child(div().text_size(18).font_semibold().text_color(color(w, stale, t, s)).child(`${w.used}%`)))
           .child(meter(w, stale, t, 6, s))
           .child(div().text_size(11.5).text_color(t.dim).child(resets(w)))))
+        .when(Boolean(u?.credits), el => el.child(v_flex().gap(6)
+          .child(h_flex().justify_between().items_end()
+            .child(div().text_color(t.foreground).child("Credits left"))
+            .child(div().text_size(18).font_semibold().text_color(stale ? t.dim : PROVIDERS[s.provider]?.color ?? t.accent)
+              .child(u.credits.unlimited ? "unlimited" : thousands(u.credits.balance))))
+          .when(Boolean(u.credits.messages), el => el.child(div().text_size(11.5).text_color(t.dim)
+            .child(`about ${thousands(u.credits.messages?.[0])}–${thousands(u.credits.messages?.[1])} local messages`)))))
         .child(div().text_size(11.5).text_color(u?.error ? t.blocked : t.dim).child(footer));
     };
     return v_flex().w_full().h(props().height ?? 0).when(!props().below, el => el.justify_end()).child(surface(t, v_flex()).w_full().p(UI.padding).gap(UI.gap).text_size(12).text_color(t.muted)
@@ -303,6 +316,14 @@ export default class AiUsage extends View {
 }
 
 const clamp = v => Math.min(100, Math.max(0, v ?? 0));
+// 50992.6 → "50,993"; and for the bars, "51k cr".
+const thousands = v => String(Math.round(v ?? 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+function creditsShort(c) {
+  if (c.unlimited) return "∞ cr";
+  const b = Math.max(0, c.balance ?? 0);
+  const n = b >= 1e6 ? `${(b / 1e6).toFixed(b >= 1e7 ? 0 : 1)}M` : b >= 1e4 ? `${Math.round(b / 1e3)}k` : b >= 1e3 ? `${(b / 1e3).toFixed(1)}k` : String(Math.round(b));
+  return `${n.replace(".0", "")} cr`;
+}
 // "Codex · codex" says it twice; add the label only when it names something more (a Claude account, "pi").
 const title = s => {
   const name = s.provider ? PROVIDERS[s.provider].name : s.label;
