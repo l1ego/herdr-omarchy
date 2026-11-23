@@ -62,6 +62,12 @@
           }
         },
         {
+          "id": "questions",
+          "type": "block",
+          "size": { "px": 0 },
+          "content": { "mod": "agent-questions", "props": { "badge": true, "block": "questions" } }
+        },
+        {
           "id": "bar-right",
           "type": "block",
           "size": {
