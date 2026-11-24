@@ -48,6 +48,13 @@
           "window_drag": true
         },
         {
+          "id": "btop",
+          "type": "block",
+          "size": { "px": 0 },
+          "window_drag": true,
+          "content": { "mod": "btop", "props": { "block": "btop" } }
+        },
+        {
           "id": "ai-usage",
           "type": "block",
           "size": {
