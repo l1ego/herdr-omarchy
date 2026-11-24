@@ -56,8 +56,6 @@ The Browser button in the top bar starts [terminal-browser](https://terminal-bro
 curl -fsSL https://terminal-browser.sh/install | bash
 ```
 
-Herdr's terminal draws only inline kitty images. It does not draw frames sent as a file or through shared memory (`t=f`, `t=t`, `t=s`).
-
 ## Shared Omarchy UI
 
 Edit `ui/components.js` for surfaces, headings, controls, inputs and menu rows. Edit `ui/actions.js` for Omarchy dialog routing and `ui/scroll-rail.js` for the collapsed sidebar scroll component. Then run `npm run sync-ui` once to update every consumer.
