@@ -17,7 +17,6 @@ const FIXED = {
   "agent.next": ["Agents", "Next agent"], "agent.prev": ["Agents", "Previous agent"],
   "terminal.open": ["Terminal", "New terminal"], "terminal.copy": ["Terminal", "Copy"],
   "terminal.paste": ["Terminal", "Paste"], "terminal.paste_image": ["Terminal", "Paste image"],
-  "omarchy-pane.dev": ["Terminal", "Open page in Chrome"], "omarchy-pane.inspect": ["Terminal", "Open DevTools"],
   "app.palette": ["Dialogs", "Command palette"], "app.settings": ["Dialogs", "Settings"], "app.help": ["Dialogs", "Help"],
   "layout.switch": ["Look", "Switch layout"], "omarchy-bar.next-wallpaper": ["Look", "Next wallpaper"],
   "app.zoom_in": ["Look", "Zoom in"], "app.zoom_out": ["Look", "Zoom out"], "app.zoom_reset": ["Look", "Reset zoom"],
