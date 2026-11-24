@@ -35,7 +35,7 @@ This reads only `~/.local/state/omarchy/agents/usage/codex.json`, maintained by 
 
 ## Features
 
-- **Top bar**: the menu, sidebar, browser and search buttons and the current space on the left; AI usage and the window buttons on the right. The browser button opens a blank browser tab in the space.
+- **Top bar**: the menu, sidebar, browser and search buttons and the current space on the left; AI usage and the window buttons on the right. The browser button opens [terminal-browser](https://terminal-browser.com/) in a new tab in the space. Install terminal-browser first.
 - **Sidebar**: spaces and agents with their status. Hover a space or an agent to close it with its × button. One with an agent working or waiting on you asks for a second click. Resize the sidebar, or fold it into an icon rail. The footer opens Settings, Keybindings and Mods.
 - **Tabs**: agent icons, what each one works on, its status, and a close button on hover.
 - **Side panel**: Files with colored icons, and Changes with the commit graph inside it.
@@ -58,7 +58,7 @@ The agent copies the layout, mods, themes and wallpapers into `~/.config/herdr-a
 > - `omarchy-spaces`, `omarchy-files` and `omarchy-changes` run `git` in your folders. The commit graph in `omarchy-changes` also runs `find` to look for repos in a folder that is not one.
 > - `omarchy-pane` runs `google-chrome` or `chromium` for the browser toolbar's DevTools and Chrome-window buttons, and your system's opener for links.
 > - `patches/apply-herdr-browser.sh` changes the files of `~/.local/share/herdr-browser`. It stops and starts `herdr-browser` when the helper is running.
-> - `omarchy-bar` starts `herdr-browser view` through your shell for its browser button.
+> - `omarchy-bar` starts `terminal-browser` through your shell for its browser button.
 > - `omarchy-bar` runs `git` to fetch this repo's `main` into `~/.cache/herdr-omarchy` every 6 hours. When you press Update in Mod Manager it copies files from there into `~/.config/herdr-app` with `sh`, `find`, `cmp` and `cp`.
 > - `omarchy-mod-manager` searches GitHub for mods. It runs `git` and `gh` to download and install them.
 
