@@ -3,6 +3,7 @@ import { h_flex } from "gpui-base";
 import { spaces, theme, run, window, props, layout, shared, setShared, focused, home, nextCommand, settings, watchFolder } from "herdr";
 import { matchWallpaper, nextWallpaper, desktopDirectory, setZoomBorder, ZOOM_BORDER } from "./wallpaper.js";
 import { checkUpdate, applyUpdate } from "./update.js";
+import { BROWSER_TAB } from "./browser.js";
 
 const own = (el) => el.on_mouse_down("left", (_e, cx) => cx.stop_propagation());
 
@@ -24,10 +25,8 @@ function toggleSidebar() {
   run("layout.resize", { id: "sidebar", px: narrow ? (shared("sidebar.width") ?? 268) : window()?.platform === "macos" ? 76 : 44 });
 }
 
-// A blank browser tab in the space on screen. Through the person's shell:
-// herdr-browser needs node, which often is on the shell's PATH only (nvm).
 function openBrowser() {
-  run("tab.new", { name: "Browser", argv: ["sh", "-c", 'exec "${SHELL:-sh}" -lic "exec herdr-browser view"'] });
+  run("tab.new", BROWSER_TAB);
 }
 
 export default class OmarchyBar extends View {
@@ -129,7 +128,7 @@ export default class OmarchyBar extends View {
         .child(svg("mods/omarchy-chrome/sidebar.svg").size(14))))
       .child(own(div().id("browser").flex_none().w(30).h_full().flex().items_center().justify_center().cursor_pointer().text_color(t.dim)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(openBrowser)
-        .child(svg("mods/omarchy-pane/browser/globe.svg").size(14))))
+        .child(svg("mods/omarchy-bar/globe.svg").size(14))))
       .child(own(div().id("search").flex_none().w(30).h_full().flex().items_center().justify_center().cursor_pointer().text_color(t.dim)
         .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(() => run("mod.open", { name: "omarchy-picker" }))
         .child(svg("mods/omarchy-chrome/search.svg").size(14))))

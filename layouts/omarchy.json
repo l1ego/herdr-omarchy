@@ -255,13 +255,6 @@
                               }
                             }
                           ]
-                        },
-                        {
-                          "id": "browser-notes",
-                          "type": "block",
-                          "content": {
-                            "mod": "omarchy-browser"
-                          }
                         }
                       ],
                       "active": "changes"
