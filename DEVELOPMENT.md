@@ -27,7 +27,7 @@ Each folder under `mods/` is a self-contained Herdr mod, with its own copy of ev
 | Reopen: agent resume commands | `mods/omarchy-tabs/reopen.js` |
 | Reopen: process scan, exact pane tree restore | `mods/omarchy-tabs/reopen.py` |
 | Keybindings list | `mods/omarchy-keys/main.js` |
-| Browser button: the terminal-browser command | `mods/omarchy-bar/browser.js` |
+| Browser button: the w3m command | `mods/omarchy-bar/browser.js` |
 | Notifications (layout root `toast`) | `mods/omarchy-toast/main.js` |
 | Terminal right-click menu (layout root `terminal_menu`), space and tab menus | `mods/omarchy-menu/main.js` |
 | Go-to picker (search button, palette) | `mods/omarchy-picker/main.js` |
@@ -50,11 +50,7 @@ herdr-app check mods/omarchy-mod-manager
 
 ## Browser
 
-The Browser button in the top bar starts [terminal-browser](https://terminal-browser.com/) in a new tab, through the login shell. The layout does not install it. Install it before you use the button:
-
-```sh
-curl -fsSL https://terminal-browser.sh/install | bash
-```
+The Browser button in the top bar starts the w3m text browser on DuckDuckGo in a new tab, through the login shell. The layout does not install it. Install it with your package manager before you use the button.
 
 ## Shared Omarchy UI
 
