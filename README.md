@@ -35,7 +35,7 @@ This reads only `~/.local/state/omarchy/agents/usage/codex.json`, maintained by 
 
 ## Features
 
-- **Top bar**: the menu, sidebar, browser and search buttons and the current space on the left; AI usage and the window buttons on the right. The browser button opens [terminal-browser](https://terminal-browser.com/) in a new tab in the space. Install terminal-browser first.
+- **Top bar**: the menu, sidebar, browser and search buttons and the current space on the left; AI usage and the window buttons on the right. The browser button opens [terminal-browser](https://terminal-browser.com/) on DuckDuckGo in a new Ghostty window. Install terminal-browser and Ghostty first.
 - **Sidebar**: spaces and agents with their status. Hover a space or an agent to close it with its × button. One with an agent working or waiting on you asks for a second click. Resize the sidebar, or fold it into an icon rail. The footer opens Settings, Keybindings and Mods.
 - **Tabs**: agent icons, what each one works on, its status, and a close button on hover.
 - **Side panel**: Files with colored icons, and Changes with the commit graph inside it.
@@ -55,7 +55,7 @@ The agent copies the layout, mods, themes and wallpapers into `~/.config/herdr-a
 > Some mods use the network or run programs:
 > - `omarchy-ai-usage` reads local login files for direct provider usage (Claude, Codex, Copilot, OpenCode and Pi). With the explicit `usage_source: "omarchy"` option, OpenCode/OpenAI instead uses Omarchy agents' Codex quota cache; that subscription may differ from OpenCode's account. This cache route reads no credentials and makes no network request.
 > - `omarchy-spaces`, `omarchy-files` and `omarchy-changes` run `git` in your folders. The commit graph in `omarchy-changes` also runs `find` to look for repos in a folder that is not one.
-> - `omarchy-bar` starts `terminal-browser` through your shell for its browser button.
+> - `omarchy-bar` starts Ghostty with `terminal-browser` through your shell for its browser button.
 > - `omarchy-bar` runs `git` to fetch this repo's `main` into `~/.cache/herdr-omarchy` every 6 hours. When you press Update in Mod Manager it copies files from there into `~/.config/herdr-app` with `sh`, `find`, `cmp` and `cp`.
 > - `omarchy-mod-manager` searches GitHub for mods. It runs `git` and `gh` to download and install them.
 
