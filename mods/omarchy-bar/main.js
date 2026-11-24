@@ -1,9 +1,9 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, theme, run, window, props, layout, shared, setShared, focused, home, nextCommand, settings, watchFolder } from "herdr";
+import { spaces, theme, run, exec, window, props, layout, shared, setShared, focused, home, nextCommand, settings, watchFolder } from "herdr";
 import { matchWallpaper, nextWallpaper, desktopDirectory, setZoomBorder, ZOOM_BORDER } from "./wallpaper.js";
 import { checkUpdate, applyUpdate } from "./update.js";
-import { BROWSER_TAB } from "./browser.js";
+import { BROWSER } from "./browser.js";
 
 const own = (el) => el.on_mouse_down("left", (_e, cx) => cx.stop_propagation());
 
@@ -26,7 +26,7 @@ function toggleSidebar() {
 }
 
 function openBrowser() {
-  run("tab.new", BROWSER_TAB);
+  exec(BROWSER[0], BROWSER.slice(1)).catch(() => null);
 }
 
 export default class OmarchyBar extends View {
