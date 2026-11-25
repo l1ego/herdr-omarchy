@@ -35,12 +35,11 @@ This reads only `~/.local/state/omarchy/agents/usage/codex.json`, maintained by 
 
 ## Features
 
-- **Top bar**: the menu, sidebar, browser and search buttons and the current space on the left; AI usage and the window buttons on the right. The browser button opens a blank browser tab in the space.
+- **Top bar**: the menu, sidebar, browser and search buttons and the current space on the left; AI usage and the window buttons on the right. The browser button opens [terminal-browser](https://terminal-browser.com/) on DuckDuckGo in a new Ghostty window. Install terminal-browser and Ghostty first.
 - **Sidebar**: spaces and agents with their status. Hover a space or an agent to close it with its × button. One with an agent working or waiting on you asks for a second click. Resize the sidebar, or fold it into an icon rail. The footer opens Settings, Keybindings and Mods.
 - **Tabs**: agent icons, what each one works on, its status, and a close button on hover.
 - **Side panel**: Files with colored icons, and Changes with the commit graph inside it.
 - **Themes**: every Omarchy color theme, each with its wallpapers.
-- **Browser panes**: a local page reloads when you save a file in its folder (pages directly in `/tmp` do not). The toolbar counts the page's console errors, opens DevTools on it, or opens the page in a real Chrome window.
 
 ## Install
 
@@ -50,15 +49,13 @@ Ask your agent in Herdr:
 Read ~/.config/herdr-app/AGENTS.md, then add the layout from github.com/shafiqimtiaz/herdr-omarchy.
 ```
 
-The agent copies the layout, mods, themes and wallpapers into `~/.config/herdr-app`, then runs `sh patches/apply-herdr-browser.sh` from the repo. After that, updates come from Mod Manager (see Highlights); rerun the patch script yourself when `patches/` changes. The script patches Herdr's browser helper for the DevTools button and the page's error count, and restarts the helper if it is running. Run it again after each Herdr update, because an update replaces the helper. Your own layout stays. Press `ctrl-shift-l` to change between layouts.
+The agent copies the layout, mods, themes and wallpapers into `~/.config/herdr-app`. After that, updates come from Mod Manager (see Highlights). Your own layout stays. Press `ctrl-shift-l` to change between layouts.
 
 > [!NOTE]
 > Some mods use the network or run programs:
 > - `omarchy-ai-usage` reads local login files for direct provider usage (Claude, Codex, Copilot, Kimi Code, OpenCode and Pi). With the explicit `usage_source: "omarchy"` option, OpenCode/OpenAI instead uses Omarchy agents' Codex quota cache; that subscription may differ from OpenCode's account. This cache route reads no credentials and makes no network request.
 > - `omarchy-spaces`, `omarchy-files` and `omarchy-changes` run `git` in your folders. The commit graph in `omarchy-changes` also runs `find` to look for repos in a folder that is not one.
-> - `omarchy-pane` runs `google-chrome` or `chromium` for the browser toolbar's DevTools and Chrome-window buttons, and your system's opener for links.
-> - `patches/apply-herdr-browser.sh` changes the files of `~/.local/share/herdr-browser`. It stops and starts `herdr-browser` when the helper is running.
-> - `omarchy-bar` starts `herdr-browser view` through your shell for its browser button.
+> - `omarchy-bar` starts Ghostty with `terminal-browser` through your shell for its browser button.
 > - `omarchy-bar` runs `git` to fetch this repo's `main` into `~/.cache/herdr-omarchy` every 6 hours. When you press Update in Mod Manager it copies files from there into `~/.config/herdr-app` with `sh`, `find`, `cmp` and `cp`.
 > - `omarchy-mod-manager` searches GitHub for mods. It runs `git` and `gh` to download and install them.
 
@@ -77,8 +74,6 @@ These keys work only in the Omarchy layout, except Ctrl+arrows, which also apply
 | `alt-enter` / `alt-shift-enter` | Split the pane right / down |
 | `super-return` | New terminal |
 | `ctrl-alt-shift-t` | Reopen the last closed tab, with its agents resumed |
-| `ctrl-alt-o` | Open the browser pane's page in a Chrome window |
-| `ctrl-alt-i` | Open DevTools on the browser pane's page |
 | `super-w` | Close the pane |
 | `super-f` | Zoom the pane |
 | `super-c` / `super-v` | Copy / paste |
@@ -103,7 +98,6 @@ The repo has the same structure as a Herdr home folder:
 | --- | --- |
 | `layouts/omarchy.json` | The layout: tile tree, sizes and spacing |
 | `mods/` | One folder for each mod. Each mod installs on its own, with its own icons. It includes the layout's own notifications, terminal menu, go-to picker and add-machine dialog. |
-| `patches/` | The browser helper patch and the script that applies it |
 | `themes/` | The Omarchy color themes |
 | `backgrounds/omarchy/` | The wallpapers of each theme |
 | `keys.json` | The layout keys |

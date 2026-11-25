@@ -27,9 +27,7 @@ Each folder under `mods/` is a self-contained Herdr mod, with its own copy of ev
 | Reopen: agent resume commands | `mods/omarchy-tabs/reopen.js` |
 | Reopen: process scan, exact pane tree restore | `mods/omarchy-tabs/reopen.py` |
 | Keybindings list | `mods/omarchy-keys/main.js` |
-| Browser toolbar: reload on save, DevTools, Chrome window | `mods/omarchy-pane/main.js` |
-| Browser helper changes (outside this repo) | `patches/herdr-browser.patch` |
-| Applying the helper patch | `patches/apply-herdr-browser.sh` |
+| Browser button: the Ghostty and terminal-browser command | `mods/omarchy-bar/browser.js` |
 | Notifications (layout root `toast`) | `mods/omarchy-toast/main.js` |
 | Terminal right-click menu (layout root `terminal_menu`), space and tab menus | `mods/omarchy-menu/main.js` |
 | Go-to picker (search button, palette) | `mods/omarchy-picker/main.js` |
@@ -50,24 +48,14 @@ herdr-app check mods/omarchy-mod-manager
 
 `check` loads the entry point, helper imports, and initial UI. It does not exercise later clicks or asynchronous states. When changing UI behavior, also exercise the affected picker, panel, or dialog in Herdr. Repo edits and installed copies under `~/.config/herdr-app` are separate unless explicitly linked.
 
-## Browser helper patch
+## Browser
 
-Herdr's browser lives in `~/.local/share/herdr-browser`, and a Herdr update replaces it. `patches/herdr-browser.patch` holds the changes this layout makes to it:
-
-- `helper.mjs`: Chrome also opens a local debugging port, and each page's state carries its DevTools address (`inspect`) and its count of console errors since the last navigation (`errors`). The pane toolbar reads both.
-- `view.mjs`: wheel ticks that arrive within 16 ms go to the page as one scroll, and frames are capped at 30 a second instead of 20.
-
-Run the script after installing the layout and again after every Herdr update:
+The Browser button in the top bar starts [terminal-browser](https://terminal-browser.com/) on DuckDuckGo in a new Ghostty window, through the login shell. Herdr's terminal drops the page image for single frames, so the page flickers in a Herdr tab. Ghostty shows it correctly. The layout does not install these programs. Install them before you use the button:
 
 ```sh
-sh patches/apply-herdr-browser.sh
+curl -fsSL https://terminal-browser.sh/install | bash
+sudo snap install ghostty --classic
 ```
-
-It applies the patch only when it is not applied yet and says so when it is. When the helper has changed so much that the patch no longer fits, it changes nothing, prints one line and exits with 1. After applying, it restarts the helper if it is running (`herdr-browser` needs `node` on PATH; without it the script says so and skips the restart). Give it a folder to patch a copy instead of the live helper: `sh patches/apply-herdr-browser.sh /tmp/helper-copy`. With a folder it never restarts the helper.
-
-The debugging port listens on 127.0.0.1 only and Chrome refuses connections from web pages, but any program on the machine can drive that browser through it.
-
-Herdr's terminal draws only inline kitty images: frames sent as a file or through shared memory (`t=f`, `t=t`, `t=s`) are not drawn, so the page stream cannot skip the terminal.
 
 ## Shared Omarchy UI
 
