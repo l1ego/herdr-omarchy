@@ -69,6 +69,13 @@
           }
         },
         {
+          "id": "tokens",
+          "type": "block",
+          "size": { "px": 0 },
+          "window_drag": true,
+          "content": { "mod": "token-usage", "props": { "block": "tokens" } }
+        },
+        {
           "id": "questions",
           "type": "block",
           "size": { "px": 0 },
